@@ -1,0 +1,71 @@
+name: Build ChatGPT-AI-Chess (Desktop)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller python-chess
+
+      - name: Build (PyInstaller)
+        shell: bash
+        run: |
+          pyinstaller --onefile chatgpt_ai_chess.py
+          # Rename by OS for dễ tải
+          mkdir -p out
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            mv dist/chatgpt_ai_chess.exe out/chatgpt_ai_chess-windows-x64.exe
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            mv dist/chatgpt_ai_chess out/chatgpt_ai_chess-linux-x64
+          else
+            mv dist/chatgpt_ai_chess out/chatgpt_ai_chess-macos-universal
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-build
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+
+      - name: Create GitHub Release (tag = nightly)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: ChatGPT-AI-Chess Nightly
+          files: |
+            release_assets/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
